@@ -1,14 +1,82 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Icon, Btn } from './ui'
-import { clinic, services } from '../content/kumbakonam'
+import { services } from '../content/kumbakonam'
 
 const field =
   'w-full rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink placeholder:text-muted/70 transition-all duration-200 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 focus:outline-none'
 
+const ENDPOINT = import.meta.env.VITE_FORM_ENDPOINT || 'https://avmsmilesdental.com/api/email.php'
+const SOURCE = 'AVM Smiles Kumbakonam'
+const options = [...services.map((s) => s.title), 'General Checkup']
+
+// Custom (non-native) dropdown for the treatment field.
+function TreatmentSelect({ id, value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(-1)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const pick = (v) => { onChange(v); setOpen(false) }
+  const onKey = (e) => {
+    if (e.key === 'Escape') setOpen(false)
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) { setOpen(true); setActive(Math.max(0, options.indexOf(value))); return }
+      setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length)
+    } else if ((e.key === 'Enter' || e.key === ' ') && open && active >= 0) {
+      e.preventDefault()
+      pick(options[active])
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        id={id}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={`${id}-list`}
+        onClick={() => { setOpen(!open); setActive(options.indexOf(value)) }}
+        onKeyDown={onKey}
+        className={`${field} flex cursor-pointer items-center justify-between gap-2 text-left`}
+      >
+        <span className={`truncate ${value ? '' : 'text-muted/70'}`}>{value || 'Select treatment'}</span>
+        <Icon name="ChevronDown" size={18} className={`shrink-0 text-brand-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <ul id={`${id}-list`} role="listbox" className="absolute z-30 mt-2 max-h-60 w-full overflow-y-auto rounded-2xl border border-line bg-white p-1.5 shadow-[0_18px_48px_-16px_rgba(40,36,89,.35)]">
+          {options.map((o, i) => (
+            <li
+              key={o}
+              role="option"
+              aria-selected={o === value}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => pick(o)}
+              className={`flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm ${i === active ? 'bg-brand-50 text-brand-700' : 'text-ink'} ${o === value ? 'font-semibold' : ''}`}
+            >
+              {o}
+              {o === value && <Icon name="Check" size={16} className="text-brand-600" />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function BookingForm({ id, treatment, setTreatment, dark = false }) {
   const [form, setForm] = useState({ name: '', phone: '', date: '' })
   const [errors, setErrors] = useState({})
-  const [done, setDone] = useState(false)
+  const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
@@ -22,33 +90,23 @@ export default function BookingForm({ id, treatment, setTreatment, dark = false 
     if (Object.keys(er).length) return
 
     setBusy(true)
-    const payload = { ...form, treatment: treatment || 'Not specified', clinic: 'Kumbakonam' }
-    const endpoint = import.meta.env.VITE_FORM_ENDPOINT
+    const payload = {
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      date: form.date,
+      treatment: treatment || 'Not specified',
+      source: SOURCE,
+    }
     try {
-      if (endpoint) {
-        const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        if (!r.ok) throw new Error('failed')
-      } else {
-        const msg = `Appointment request - AVM Smiles Kumbakonam%0AName: ${payload.name}%0APhone: ${payload.phone}%0ADate: ${payload.date || 'Flexible'}%0ATreatment: ${payload.treatment}`
-        window.open(`${clinic.whatsappHref}?text=${msg}`, '_blank', 'noopener')
-      }
-      setDone(true)
+      const r = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      if (!r.ok) throw new Error('failed')
+      setForm({ name: '', phone: '', date: '' })
+      navigate('/kumbakonam/thankyou')
     } catch {
       setErrors({ form: 'Something went wrong. Please call us or message on WhatsApp.' })
     } finally {
       setBusy(false)
     }
-  }
-
-  if (done) {
-    return (
-      <div className="rounded-3xl bg-white p-8 text-center shadow-[0_18px_48px_-16px_rgba(40,36,89,.35)]">
-        <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-brand-50 text-brand-600"><Icon name="CircleCheck" size={32} /></span>
-        <h3 className="mt-4 text-xl font-semibold text-brand-900">Request received</h3>
-        <p className="mt-2 text-sm text-muted">Thank you. Our team will contact you shortly to confirm your appointment.</p>
-        <button onClick={() => setDone(false)} className="mt-5 text-sm font-semibold text-brand-600 hover:underline cursor-pointer">Book another</button>
-      </div>
-    )
   }
 
   return (
@@ -74,11 +132,7 @@ export default function BookingForm({ id, treatment, setTreatment, dark = false 
           </div>
           <div>
             <label htmlFor={`${id}-tx`} className="mb-1.5 block text-xs font-medium text-muted">Treatment Required</label>
-            <select id={`${id}-tx`} className={field} value={treatment} onChange={(e) => setTreatment(e.target.value)}>
-              <option value="">Select treatment</option>
-              {services.map((s) => <option key={s.slug}>{s.title}</option>)}
-              <option>General Checkup</option>
-            </select>
+            <TreatmentSelect id={`${id}-tx`} value={treatment} onChange={setTreatment} />
           </div>
         </div>
         {errors.form && <p className="text-xs text-accent">{errors.form}</p>}

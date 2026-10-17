@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
 import { asset } from '../lib/asset'
 import { Icon, Btn, A } from './ui'
 import { clinic, nav, services } from '../content/kumbakonam'
@@ -19,7 +20,55 @@ export function TopBar() {
   )
 }
 
+// Landing sections watched by the scroll-spy, mapped to the nav item they belong to.
+// (Gallery and Contact Us are separate pages here; their landing teasers highlight the same items.)
+const SPY = [['home', 'home'], ['about', 'about'], ['services', 'services'], ['gallery', 'gallery'], ['book', null], ['contact', 'contact-us']]
+
+const navId = (href) => {
+  if (href.includes('#')) return href.split('#')[1]
+  return href.split('/').filter(Boolean)[1] || 'home'
+}
+
+// Which nav item is active: the current page, or (on the landing page) the section being read.
+function useActiveNav() {
+  const { pathname } = useLocation()
+  const parts = pathname.split('/').filter(Boolean)
+  const i = parts.indexOf('kumbakonam')
+  const seg = i === -1 ? undefined : parts[i + 1]
+  const staticId = seg === 'gallery' || seg === 'contact-us' ? seg : seg === 'thankyou' ? 'none' : seg ? 'services' : null
+  const [spy, setSpy] = useState('home')
+
+  useEffect(() => {
+    if (staticId) return
+    const update = () => {
+      let current = null
+      let found = false
+      for (const [id, item] of SPY) {
+        const el = document.getElementById(id)
+        if (el) found = true
+        if (el && el.getBoundingClientRect().top <= 220) current = item
+      }
+      setSpy(found ? current : null)
+    }
+    update()
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [staticId, pathname])
+
+  return staticId ?? spy
+}
+
+const navLink = (on) =>
+  `relative px-4 py-2 text-sm font-medium transition-colors duration-200 after:absolute after:inset-x-4 after:bottom-0 after:h-0.5 after:origin-left after:rounded-full after:bg-accent after:transition-transform after:duration-300 after:ease-out hover:text-brand-600 hover:after:scale-x-100 ${
+    on ? 'text-brand-600 after:scale-x-100' : 'text-ink after:scale-x-0'
+  }`
+
 export function Header() {
+  const activeNav = useActiveNav()
   const [scrolled, setScrolled] = useState(false)
   const [hidden, setHidden] = useState(false)
   const [open, setOpen] = useState(false)
@@ -55,7 +104,7 @@ export function Header() {
           {nav.map((n) =>
             n.dropdown ? (
               <div key={n.label} className="relative group">
-                <A href={n.href} className="flex items-center gap-1 px-4 py-2 text-sm font-medium text-ink hover:text-brand-600 transition-colors">
+                <A href={n.href} aria-current={activeNav === navId(n.href) ? 'true' : undefined} className={`flex items-center gap-1 ${navLink(activeNav === navId(n.href))}`}>
                   {n.label} <Icon name="ChevronDown" size={16} className="transition-transform duration-200 group-hover:rotate-180" />
                 </A>
                 <div className="invisible opacity-0 translate-y-2 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:visible group-focus-within:opacity-100 group-focus-within:translate-y-0 transition-all duration-200 absolute left-0 top-full pt-2">
@@ -69,7 +118,7 @@ export function Header() {
                 </div>
               </div>
             ) : (
-              <A key={n.label} href={n.href} className="px-4 py-2 text-sm font-medium text-ink hover:text-brand-600 transition-colors">
+              <A key={n.label} href={n.href} aria-current={activeNav === navId(n.href) ? 'true' : undefined} className={navLink(activeNav === navId(n.href))}>
                 {n.label}
               </A>
             ),
